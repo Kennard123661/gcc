@@ -9,4 +9,6 @@ numpy
 matplotlib
 seaborn
 tqdm
+tensorboard
 tensorboard_logger
+psutil

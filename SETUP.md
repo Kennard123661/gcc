@@ -8,5 +8,4 @@ pip install dgl-cu101==0.4.3.post2
 
 pip install -r requirements.txt
 conda install -c conda-forge rdkit
-conda install -c dglteam dgl-cuda10.1 
 ```

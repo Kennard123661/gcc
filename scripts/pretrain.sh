@@ -1,5 +1,5 @@
 #!/bin/bash
-gpu=0
+gpu=$1
 ARGS=${@:2}
 
 python train.py \

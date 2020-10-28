@@ -701,7 +701,14 @@ def main(args):
         del checkpoint
         torch.cuda.empty_cache()
 
+    # tensorboard
+    #  logger = tb_logger.Logger(logdir=args.tb_folder, flush_secs=2)
     sw = SummaryWriter(args.tb_folder)
+    #  plots_q, plots_k = zip(*[train_dataset.getplot(i) for i in range(5)])
+    #  plots_q = torch.cat(plots_q)
+    #  plots_k = torch.cat(plots_k)
+    #  sw.add_images('images/graph_q', plots_q, 0, dataformats="NHWC")
+    #  sw.add_images('images/graph_k', plots_k, 0, dataformats="NHWC")
 
     # routine
     for epoch in range(args.start_epoch, args.epochs + 1):
@@ -786,7 +793,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-
     warnings.simplefilter("once", UserWarning)
     args = parse_option()
 
@@ -809,14 +815,3 @@ if __name__ == "__main__":
     else:
         args.gpu = args.gpu[0]
         main(args)
-    # import optuna
-    # def objective(trial):
-    #     args.epochs = 50
-    #     args.learning_rate = trial.suggest_loguniform('learning_rate', 1e-4, 1e-2)
-    #     args.weight_decay = trial.suggest_loguniform('weight_decay', 1e-5, 1e-3)
-    #     args.restart_prob = trial.suggest_uniform('restart_prob', 0.5, 1)
-    #     # args.alpha = 1 - trial.suggest_loguniform('alpha', 1e-4, 1e-2)
-    #     return main(args, trial)
-
-    # study = optuna.load_study(study_name='cat_prone', storage="sqlite:///example.db")
-    # study.optimize(objective, n_trials=20)

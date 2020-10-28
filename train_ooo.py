@@ -347,6 +347,112 @@ def clip_grad_norm(params, max_norm):
         )
 
 
+def train_ogo(epoch: int, train_loader, model, ogo_pred_head, criterion, optimizer, sw, opt):
+    """ performs training for one epoch """
+    num_batches = train_loader.dataset.total // opt.batch_size
+    model.train()
+
+    batch_time = AverageMeter()
+    data_time = AverageMeter()
+    loss_meter = AverageMeter()
+    epoch_loss_meter = AverageMeter()
+    prob_meter = AverageMeter()
+    graph_size = AverageMeter()
+    gnorm_meter = AverageMeter()
+    max_num_nodes = 0
+    max_num_edges = 0
+
+    end = time.time()
+    for idx, batch in enumerate(train_loader):
+        data_time.update(time.time() - end)
+        graph_q, y = batch
+
+        batchsize = graph_q.shape
+
+        feat_q = model(graph_q)
+
+        out = torch.matmul(feat_k, feat_q.t()) / opt.nce_t
+        prob = out[range(graph_q.batch_size), range(graph_q.batch_size)].mean()
+
+        assert feat_q.shape == (graph_q.batch_size, opt.hidden_size)
+
+        # ===================backward=====================
+        optimizer.zero_grad()
+        loss = criterion(out)
+        loss.backward()
+        grad_norm = clip_grad_norm(model.parameters(), opt.clip_norm)
+
+        global_step = epoch * num_batches + idx
+        lr_this_step = opt.learning_rate * warmup_linear(
+            global_step / (opt.epochs * num_batches), 0.1
+        )
+        for param_group in optimizer.param_groups:
+            param_group["lr"] = lr_this_step
+        optimizer.step()
+
+        # ===================meters=====================
+        loss_meter.update(loss.item(), bsz)
+        epoch_loss_meter.update(loss.item(), bsz)
+        prob_meter.update(prob.item(), bsz)
+        graph_size.update(
+            (graph_q.number_of_nodes() + graph_k.number_of_nodes()) / 2.0 / bsz, 2 * bsz
+        )
+        gnorm_meter.update(grad_norm, 1)
+        max_num_nodes = max(max_num_nodes, graph_q.number_of_nodes())
+        max_num_edges = max(max_num_edges, graph_q.number_of_edges())
+
+        if opt.moco:
+            moment_update(model, model_ema, opt.alpha)
+
+        torch.cuda.synchronize()
+        batch_time.update(time.time() - end)
+        end = time.time()
+
+        # print info
+        if (idx + 1) % opt.print_freq == 0:
+            mem = psutil.virtual_memory()
+            #  print(f'{idx:8} - {mem.percent:5} - {mem.free/1024**3:10.2f} - {mem.available/1024**3:10.2f} - {mem.used/1024**3:10.2f}')
+            #  mem_used.append(mem.used/1024**3)
+            print(
+                "Train: [{0}][{1}/{2}]\t"
+                "BT {batch_time.val:.3f} ({batch_time.avg:.3f})\t"
+                "DT {data_time.val:.3f} ({data_time.avg:.3f})\t"
+                "loss {loss.val:.3f} ({loss.avg:.3f})\t"
+                "prob {prob.val:.3f} ({prob.avg:.3f})\t"
+                "GS {graph_size.val:.3f} ({graph_size.avg:.3f})\t"
+                "mem {mem:.3f}".format(
+                    epoch,
+                    idx + 1,
+                    num_batches,
+                    batch_time=batch_time,
+                    data_time=data_time,
+                    loss=loss_meter,
+                    prob=prob_meter,
+                    graph_size=graph_size,
+                    mem=mem.used / 1024 ** 3,
+                )
+            )
+            #  print(out[0].abs().max())
+
+        # tensorboard logger
+        if (idx + 1) % opt.tb_freq == 0:
+            global_step = epoch * num_batches + idx
+            sw.add_scalar("moco_loss", loss_meter.avg, global_step)
+            sw.add_scalar("moco_prob", prob_meter.avg, global_step)
+            sw.add_scalar("graph_size", graph_size.avg, global_step)
+            sw.add_scalar("graph_size/max", max_num_nodes, global_step)
+            sw.add_scalar("graph_size/max_edges", max_num_edges, global_step)
+            sw.add_scalar("gnorm", gnorm_meter.avg, global_step)
+            sw.add_scalar("learning_rate", optimizer.param_groups[0]["lr"], global_step)
+            loss_meter.reset()
+            prob_meter.reset()
+            graph_size.reset()
+            gnorm_meter.reset()
+            max_num_nodes, max_num_edges = 0, 0
+    return epoch_loss_meter.avg
+
+
+
 def train_moco(
     epoch, train_loader, model, model_ema, contrast, criterion, optimizer, sw, opt
 ):

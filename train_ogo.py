@@ -383,7 +383,7 @@ def train_ogo(epoch: int, train_loader, model, prediction_head: OddGraphOutPredi
         graph_features = model(graphs)
         graph_features = graph_features.view(batchsize, num_graphs_per_batch, opt.hidden_size)
 
-        targets = torch.multinomial(multinomial_weights, num_samples=batchsize)
+        targets = torch.multinomial(multinomial_weights, num_samples=batchsize, replacement=True)
         targets = targets.view(-1)
 
         # swap the graph with the negative graph; the negative graph can be at the same location.

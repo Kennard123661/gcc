@@ -88,7 +88,7 @@ def parse_option():
     parser.add_argument("--nce-k", type=int, default=32)
     parser.add_argument("--nce-t", type=float, default=0.07)
     parser.add_argument("--num_graphs", type=int, default=6)
-    parser.add_argument("--fusion_method", type=int, default="cosine_sod")
+    parser.add_argument("--fusion_method", type=str, default="cosine-sod")
 
     # random walk
     parser.add_argument("--rw-hops", type=int, default=256)

@@ -78,9 +78,10 @@ class LoadBalanceGraphDataset(torch.utils.data.IterableDataset):
         self.graph_transform = graph_transform
         assert aug in ("rwr", "ns")
         self.aug = aug
+        self.num_workers = num_workers
 
     def __len__(self):
-        return self.num_samples * num_workers
+        return self.num_samples * self.num_workers
 
     def __iter__(self):
         degrees = torch.cat([g.in_degrees().double() ** 0.75 for g in self.graphs])

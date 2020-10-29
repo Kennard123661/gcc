@@ -387,7 +387,7 @@ def train_ogo(epoch: int, train_loader, model, prediction_head: OddGraphOutPredi
         targets = targets.view(-1)
 
         # swap the graph with the negative graph; the negative graph can be at the same location.
-        swap_idxs = targets + torch.arange(len(targets), device=torch.device(opt.device)) * num_graphs_per_batch
+        swap_idxs = targets + torch.arange(len(targets), device=torch.device(opt.gpu)) * num_graphs_per_batch
         flattened_features = graph_features.view(num_total_graphs, opt.hidden_size)
         swap_features = flattened_features[swap_idxs, :]
         flattened_features[swap_idxs, :] = graph_features[:, -1, :]  # replace with negative graph

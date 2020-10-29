@@ -413,12 +413,12 @@ def train_ogo(epoch: int, train_loader, model, prediction_head: OddGraphOutPredi
         predictions = torch.argmax(logits, dim=1)
         predictions = predictions.view(-1)
         is_corrects = torch.eq(predictions, targets)
-        accuracy = torch.mean(is_corrects.float()).item()
+        accuracy = torch.mean(is_corrects.float())
 
         # ===================meters=====================
         loss_meter.update(loss.item(), batchsize)
         epoch_loss_meter.update(loss.item(), batchsize)
-        accuracy_meter.update(loss.item(), accuracy)
+        accuracy_meter.update(accuracy.item(), batchsize)
         graphs.number_of_nodes()
         graph_size.update(graphs.number_of_nodes() / num_total_graphs, num_total_graphs)
         gnorm_meter.update(grad_norm, 1)

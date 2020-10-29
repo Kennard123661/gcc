@@ -60,8 +60,6 @@ class OddGraphOutPredictionHead(nn.Module):
 
         if 'sod' in self.method:
             embeddings1 = x[:, self.idxs1, :]
-            print(self.idxs1)
-            print(self.idxs2)
             embeddings2 = x[:, self.idxs2, :]
             differences = embeddings1 - embeddings2  # B x N x D
             out = torch.sum(differences, dim=1)  # B x D

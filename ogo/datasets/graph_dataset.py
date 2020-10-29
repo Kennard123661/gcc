@@ -78,11 +78,12 @@ class OddGraphOutDataset(torch.utils.data.IterableDataset):
         self.jobs = jobs * num_copies
         self.total = self.num_samples * num_workers
         self.graph_transform = graph_transform
+        self.num_workers = num_workers
         assert aug in ("rwr", "ns")
         self.aug = aug
 
     def __len__(self):
-        return self.num_samples * num_workers
+        return self.num_samples * self.num_workers
 
     def __iter__(self):
         degrees = torch.cat([g.in_degrees().double() ** 0.75 for g in self.graphs])

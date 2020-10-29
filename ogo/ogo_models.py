@@ -25,12 +25,12 @@ class Linear(nn.Module):
         return self.act(self.bn(self.net(x)))
 
 
-class OddOneOutHead(nn.Module):
+class OddGraphOutPredictionHead(nn.Module):
     def __init__(self, embedding_size: int, num_embeddings: int, method: str, base_dims: int = 128,
                  batchnorm: bool = True):
-        super(OddOneOutHead, self).__init__()
+        super(OddGraphOutPredictionHead, self).__init__()
         self.embedding_size = embedding_size
-        self.num_embedding = num_embeddings
+        self.num_embeddings = num_embeddings
 
         self.method = method
         if 'sod' in self.method:
@@ -54,7 +54,7 @@ class OddOneOutHead(nn.Module):
 
     def forward(self, x):
         batchsize = x.shape[0]
-        assert x.shape[1] == self.num_embedding and x.shape[2] == self.embedding_size
+        assert x.shape[1] == self.num_embeddings and x.shape[2] == self.embedding_size
         if self.method == 'cosine-sod':
             x = F.normalize(x, dim=2)  # normalize to get cosine embeddings
 
@@ -74,7 +74,7 @@ class OddOneOutHead(nn.Module):
 
 
 def main():
-    model = OddOneOutHead(embedding_size=32, num_embeddings=6, method='cosine-sod')
+    model = OddGraphOutPredictionHead(embedding_size=32, num_embeddings=6, method='cosine-sod')
     data = torch.randn(size=[10, 6, 32])
     out = model(data)
     print(out.shape)

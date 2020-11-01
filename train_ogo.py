@@ -73,7 +73,8 @@ def parse_option():
     parser.add_argument("--exp", type=str, default="")
 
     # dataset definition
-    parser.add_argument("--dataset", type=str, default="dgl", choices=["dgl", "wikipedia", "blogcatalog", "usa_airport", "brazil_airport", "europe_airport", "cora", "citeseer", "pubmed", "kdd", "icdm", "sigir", "cikm", "sigmod", "icde", "h-index-rand-1", "h-index-top-1", "h-index"] + GRAPH_CLASSIFICATION_DSETS)
+    parser.add_argument("--dataset", type=str, default="dgl",
+                        choices=["dgl", "wikipedia", "blogcatalog", "usa_airport", "brazil_airport", "europe_airport", "cora", "citeseer", "pubmed", "kdd", "icdm", "sigir", "cikm", "sigmod", "icde", "h-index-rand-1", "h-index-top-1", "h-index"] + GRAPH_CLASSIFICATION_DSETS)
 
     # model definition
     parser.add_argument("--model", type=str, default="gin", choices=["gat", "mpnn", "gin"])
@@ -135,7 +136,8 @@ def parse_option():
 
 
 def option_update(opt):
-    opt.model_name = "{}_moco_{}_{}_{}_layer_{}_lr_{}_decay_{}_bsz_{}_hid_{}_samples_{}_nce_t_{}_nce_k_{}_rw_hops_{}_restart_prob_{}_aug_{}_ft_{}_deg_{}_pos_{}_momentum_{}".format(
+    opt.model_name = "ogo/{}_ogo{}_{}_{}_layer_{}_lr_{}_decay_{}_bsz_{}_hid_{}_samples_{}_nce_t_{}_nce_k_{}_rw_hops_{}_restart_prob_" \
+                     "{}_aug_{}_ft_{}_deg_{}_pos_{}_momentum_{}_ngraphs_{}".format(
         opt.exp,
         opt.moco,
         opt.dataset,
@@ -155,6 +157,7 @@ def option_update(opt):
         opt.degree_embedding_size,
         opt.positional_embedding_size,
         opt.alpha,
+        opt.num_graph
     )
 
     if opt.load_path is None:

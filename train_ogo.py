@@ -157,7 +157,7 @@ def option_update(opt):
         opt.degree_embedding_size,
         opt.positional_embedding_size,
         opt.alpha,
-        opt.num_graph
+        opt.num_graphs
     )
 
     if opt.load_path is None:

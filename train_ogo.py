@@ -516,7 +516,6 @@ def main(args):
     mem = psutil.virtual_memory()
     print("before construct dataset", mem.used / 1024 ** 3)
     if args.finetune:
-        assert NotImplementedError
         if args.dataset in GRAPH_CLASSIFICATION_DSETS:
             dataset = GraphClassificationDatasetLabeled(
                 dataset=args.dataset,
@@ -559,7 +558,6 @@ def main(args):
             num_copies=args.num_copies,
         )
     else:
-        assert NotImplementedError
         if args.dataset in GRAPH_CLASSIFICATION_DSETS:
             train_dataset = GraphClassificationDataset(
                 dataset=args.dataset,
@@ -597,7 +595,6 @@ def main(args):
             collate_fn=labeled_batcher(),
             num_workers=args.num_workers,
         )
-        raise NotImplementedError
     mem = psutil.virtual_memory()
     print("before training", mem.used / 1024 ** 3)
 

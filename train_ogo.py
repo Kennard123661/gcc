@@ -659,7 +659,7 @@ def main(args):
         # checkpoint = torch.load(args.resume)
         # args.start_epoch = checkpoint["epoch"] + 1
         assert checkpoint is not None and isinstance(checkpoint, dict)
-        print(checkpoint)
+        print(checkpoint.keys())
         model.load_state_dict(checkpoint["model"])
         # optimizer.load_state_dict(checkpoint["optimizer"])
         prediction_head.load_state_dict(checkpoint["prediction-head"])

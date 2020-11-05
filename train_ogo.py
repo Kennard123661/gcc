@@ -662,7 +662,7 @@ def main(args):
         print(checkpoint.keys())
         model.load_state_dict(checkpoint["model"])
         # optimizer.load_state_dict(checkpoint["optimizer"])
-        prediction_head.load_state_dict(checkpoint["prediction-head"])
+        prediction_head.load_state_dict(checkpoint["prediction-had"])  # there was a typo lol
 
         print("=> loaded successfully '{}' (epoch {})".format(args.resume, checkpoint["epoch"]))
         del checkpoint

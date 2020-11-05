@@ -9,5 +9,5 @@ bash ogo/pretrain.sh 2 --batch-size 32 --num_graphs 5
 
 Then, to run finetuning, we follow the same as the original code:
 ```
-finetune.sh <load_path> <gpu> usa_airport
+bash ogo/finetune.sh <load_path> <gpu> usa_airport
 ```

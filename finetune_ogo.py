@@ -508,6 +508,7 @@ def main(args):
             print("=> no checkpoint found at '{}'".format(args.resume))
     args = option_update(args)
     print(args)
+    assert args.finetune
     assert args.gpu is not None and torch.cuda.is_available()
     print("Use GPU: {} for training".format(args.gpu))
     assert args.positional_embedding_size % 2 == 0

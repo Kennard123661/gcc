@@ -588,7 +588,6 @@ def main(args):
         else worker_init_fn,
     )
 
-    assert args.finetune
     if args.finetune:
         valid_loader = torch.utils.data.DataLoader(
             dataset=valid_dataset,

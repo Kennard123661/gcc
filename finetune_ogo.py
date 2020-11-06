@@ -489,6 +489,8 @@ def main(args):
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
+    checkpoint =None
+    assert args.resume
     if args.resume:
         if os.path.isfile(args.resume):
             print("=> loading checkpoint '{}'".format(args.resume))
@@ -641,7 +643,6 @@ def main(args):
 
     model = model.cuda(args.gpu)
     # model_ema = model_ema.cuda(args.gpu)
-
     if args.finetune:
         output_layer = nn.Linear(
             in_features=args.hidden_size, out_features=dataset.num_classes

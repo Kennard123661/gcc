@@ -492,6 +492,7 @@ def main(args):
     checkpoint =None
     assert args.resume
     if args.resume:
+        print(args.resume)
         if os.path.isfile(args.resume):
             print("=> loading checkpoint '{}'".format(args.resume))
             checkpoint = torch.load(args.resume, map_location="cpu")

@@ -326,8 +326,8 @@ class GraphClassificationDataset(NodeClassificationDataset):
         self.step_dist = step_dist
         self.entire_graph = True
         assert positional_embedding_size > 1
-
-        self.graphs = data_util.create_graph_classification_dataset(dataset).graph_lists
+        self.dataset = data_util.create_graph_classification_dataset(dataset)
+        self.graphs = self.dataset.graph_lists
 
         self.length = len(self.graphs)
         self.total = self.length
@@ -356,7 +356,7 @@ class GraphClassificationDatasetLabeled(GraphClassificationDataset):
             positional_embedding_size,
             step_dist,
         )
-        self.num_classes = self.graphs.num_labels
+        self.num_classes = self.dataset.num_labels
         self.entire_graph = True
         self.dict = [self.getitem(idx) for idx in range(len(self))]
 

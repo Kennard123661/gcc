@@ -110,7 +110,8 @@ def parse_option():
 
     # finetune setting
     parser.add_argument("--finetune", action="store_true")
-
+    parser.add_argument("--finetune", action="store_true")
+    parser.add_argument("--num_graphs", type=int, required=True)
     parser.add_argument("--alpha", type=float, default=0.999, help="exponential moving average weight")
 
     # GPU setting
@@ -133,7 +134,8 @@ def parse_option():
 
 
 def option_update(opt):
-    opt.model_name = "{}_moco_{}_{}_{}_layer_{}_lr_{}_decay_{}_bsz_{}_hid_{}_samples_{}_nce_t_{}_nce_k_{}_rw_hops_{}_restart_prob_{}_aug_{}_ft_{}_deg_{}_pos_{}_momentum_{}".format(
+    opt.model_name = "ogo/{}_ogo{}_{}_{}_layer_{}_lr_{}_decay_{}_bsz_{}_hid_{}_samples_{}_nce_t_{}_nce_k_{}_rw_hops_{}_restart_prob_" \
+                     "{}_aug_{}_ft_{}_deg_{}_pos_{}_momentum_{}_ngraphs_{}".format(
         opt.exp,
         opt.moco,
         opt.dataset,
@@ -153,6 +155,7 @@ def option_update(opt):
         opt.degree_embedding_size,
         opt.positional_embedding_size,
         opt.alpha,
+        opt.num_graphs
     )
 
     if opt.load_path is None:
@@ -684,6 +687,7 @@ def main(args):
 
     # optionally resume from a checkpoint
     args.start_epoch = 1
+    assert args.resume
     if args.resume:
         # print("=> loading checkpoint '{}'".format(args.resume))
         # checkpoint = torch.load(args.resume, map_location="cpu")

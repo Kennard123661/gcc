@@ -110,7 +110,6 @@ def parse_option():
 
     # finetune setting
     parser.add_argument("--finetune", action="store_true")
-    parser.add_argument("--finetune", action="store_true")
     parser.add_argument("--num_graphs", type=int, required=True)
     parser.add_argument("--alpha", type=float, default=0.999, help="exponential moving average weight")
 

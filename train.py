@@ -522,7 +522,7 @@ def main(args):
                 restart_prob=args.restart_prob,
                 positional_embedding_size=args.positional_embedding_size,
             )
-            labels = dataset.dataset.data.y.tolist()
+            labels = dataset.dataset.graph_labels.data.tolist()
         else:
             dataset = NodeClassificationDatasetLabeled(
                 dataset=args.dataset,

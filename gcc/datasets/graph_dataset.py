@@ -356,8 +356,7 @@ class GraphClassificationDatasetLabeled(GraphClassificationDataset):
             positional_embedding_size,
             step_dist,
         )
-        self.dataset = dataset
-        self.num_classes = self.dataset.num_labels
+        self.num_classes = self.graphs.num_labels
         self.entire_graph = True
         self.dict = [self.getitem(idx) for idx in range(len(self))]
 

@@ -7,5 +7,5 @@ declare -A epochs=(["usa_airport"]=30 ["h-index"]=30 ["imdb-binary"]=30 ["imdb-m
 
 for dataset in $ARGS
 do
-    python train.py --exp FT --model-path saved --tb-path tensorboard --tb-freq 5 --gpu $gpu --dataset $dataset --finetune --epochs ${epochs[$dataset]} --cv
+    python train_random.py --exp FT --model-path saved --tb-path tensorboard --tb-freq 5 --gpu $gpu --dataset $dataset --finetune --epochs ${epochs[$dataset]} --cv
 done

@@ -9,3 +9,7 @@ pip install dgl-cu101==0.4.3.post2  # for data augmentation of the graphs
 pip install -r requirements.txt
 conda install -c conda-forge rdkit
 ```
+
+```bash
+    export DGL_DOWNLOAD_DIR=/hdd1/yiyuan/cs6285/data/dgl
+```

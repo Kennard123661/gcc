@@ -11,5 +11,5 @@ conda install -c conda-forge rdkit
 ```
 
 ```bash
-    export DGL_DOWNLOAD_DIR=/hdd1/yiyuan/cs6285/data/dgl
+export DGL_DOWNLOAD_DIR=/hdd1/yiyuan/cs6285/data/dgl
 ```

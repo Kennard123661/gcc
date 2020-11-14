@@ -432,7 +432,7 @@ def train_ogo(epoch: int, train_loader, model, prediction_head: OddGraphOutPredi
         accuracy_meter.update(accuracy.item(), batchsize)
         graphs.number_of_nodes()
         graph_size.update(graphs.number_of_nodes() / num_total_graphs, num_total_graphs)
-        gnorm_meter.update(grad_norm, 1)
+        # gnorm_meter.update(grad_norm, 1)
         max_num_nodes = max(max_num_nodes, graphs.number_of_nodes())
         max_num_edges = max(max_num_edges, graphs.number_of_edges())
 

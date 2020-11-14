@@ -137,8 +137,9 @@ def parse_option():
 
 
 def option_update(opt):
-    opt.model_name = "ogo/{}_ogo{}_{}_{}_layer_{}_lr_{}_decay_{}_bsz_{}_hid_{}_samples_{}_nce_t_{}_nce_k_{}_rw_hops_{}_restart_prob_" \
+    opt.model_name = "ogo-accum-{}/{}_ogo{}_{}_{}_layer_{}_lr_{}_decay_{}_bsz_{}_hid_{}_samples_{}_nce_t_{}_nce_k_{}_rw_hops_{}_restart_prob_" \
                      "{}_aug_{}_ft_{}_deg_{}_pos_{}_momentum_{}_ngraphs_{}".format(
+        opt.num_accumulated,
         opt.exp,
         opt.moco,
         opt.dataset,

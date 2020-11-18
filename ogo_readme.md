@@ -35,11 +35,11 @@ python scripts/download.py --url https://drive.google.com/open?id=12kmPV3XjVufxb
 
 To run pretraining for OGO:
 ```
-bash ogo/pretrain.sh 2 --batch-size [batchsize] --num_graphs [number of grapsh per batch, K]
+bash ogo/pretrain.sh <gpu> --batch-size [batchsize] --num_graphs [number of grapsh per batch, K]
 ```
 Some examples include:
 ```
-bash ogo/pretrain.sh 2 --batch-size 32 --num_graphs 5
+bash ogo/pretrain.sh <gpu> --batch-size 32 --num_graphs 5
 ```
 which pretrains a GIN using OGO with batchsize of 32 and the number of graphs K is 5
 
@@ -56,6 +56,6 @@ The datasets that we have are `usa_airport`, `h-index`, `imdb-binary`, `imdb-mul
 
 To finetune the pretrain network, run the following command:
 ```
-bash scripts/pretrain.sh --batch-size 32
+bash scripts/pretrain.sh <gpu> --batch-size 32
 ```
 which pretrains GIN using the GCC pretraining.

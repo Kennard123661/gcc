@@ -51,7 +51,10 @@ bash ogo/finetune_3.sh <load_path> <gpu> usa_airport
 ```
 The datasets that we have are `usa_airport`, `h-index`, `imdb-binary`, `imdb-multi`, `collab`, `rdt-b`, `rdt-5k`. 
 
-
+For different batch size, use
+```
+bash ogo/finetune_3.sh <load_path> <gpu> usa_airport --batch-size 128
+```
 ## Pretraining GCC
 
 To finetune the pretrain network, run the following command:

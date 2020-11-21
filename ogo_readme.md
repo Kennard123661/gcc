@@ -32,53 +32,13 @@ python scripts/download.py --url https://drive.google.com/open?id=12kmPV3XjVufxb
 
 ## Pretraining GCC
 
-To finetune the pretrain network, run the following command:
+To pretrain gcc, run the following command:
 ```
 bash scripts/pretrain.sh <gpu> --batch-size 32
 ```
 which pretrains GIN using the GCC pretraining. Change the batch-size to `128` to pretrain on batch size of 128
 
-## Pretraining
-
-To run pretraining for OGO:
-```
-bash ogo/pretrain.sh <gpu> --batch-size [batchsize] --num_graphs [number of grapsh per batch, K]
-```
-Some examples include:
-```
-bash ogo/pretrain.sh <gpu> --batch-size 32 --num_graphs 5
-```
-which pretrains a GIN using OGO with batchsize of 32 and the number of graphs K is 5
-
-## Finetuning on batchsize 32
-
-The datasets that we have are `usa_airport`, `h-index`, `imdb-binary`, `imdb-multi`, `collab`, `rdt-b`, `rdt-5k`. 
-
-### OGO with `K=3`
-
-```
-bash ogo/finetune_3.sh <load_path> <gpu> usa_airport
-```
-
-### OGO with `K=5`
-
-```
-bash ogo/finetune_5.sh <load_path> <gpu> usa_airport
-```
-
-### GCC
-
-```
-bash ogo/finetune.sh <load_path> <gpu> usa_airport
-```
-
-### Random initialization
-
-```
-bash scripts/finetune_random.sh <gpu> usa_airport
-```
-
-## Pretraining  
+## Pretraining  OGO
 
 To run pretraining for OGO:
 ```

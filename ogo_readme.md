@@ -66,6 +66,6 @@ which pretrains GIN using the GCC pretraining.
 ## Training on random initialization
 An exmaple for random initialization finetuning
 ```
-bash scripts/finetune_random.sh <gpu> usa_airport
+bash scripts/finetune_random.sh <gpu> usa_airport --batch-size 128
 ```
 

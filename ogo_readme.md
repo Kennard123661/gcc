@@ -62,3 +62,10 @@ To finetune the pretrain network, run the following command:
 bash scripts/pretrain.sh <gpu> --batch-size 32
 ```
 which pretrains GIN using the GCC pretraining.
+
+## Training on random initialization
+An exmaple for random initialization finetuning
+```
+bash scripts/finetune_random.sh <gpu> usa_airport
+```
+

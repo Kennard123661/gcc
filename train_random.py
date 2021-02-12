@@ -131,7 +131,8 @@ def parse_option():
 
 
 def option_update(opt):
-    opt.model_name = "{}_moco_{}_{}_{}_layer_{}_lr_{}_decay_{}_bsz_{}_hid_{}_samples_{}_nce_t_{}_nce_k_{}_rw_hops_{}_restart_prob_{}_aug_{}_ft_{}_deg_{}_pos_{}_momentum_{}".format(
+    opt.model_name = "random-initialization/{}_moco_{}_{}_{}_layer_{}_lr_{}_decay_{}_bsz_{}_hid_{}_samples_{}" \
+                     "_nce_t_{}_nce_k_{}_rw_hops_{}_restart_prob_{}_aug_{}_ft_{}_deg_{}_pos_{}_momentum_{}".format(
         opt.exp,
         opt.moco,
         opt.dataset,
@@ -484,6 +485,8 @@ def main(args):
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
+    checkpoint = None
+    assert not args.resume
     if args.resume:
         if os.path.isfile(args.resume):
             print("=> loading checkpoint '{}'".format(args.resume))
@@ -522,7 +525,7 @@ def main(args):
                 restart_prob=args.restart_prob,
                 positional_embedding_size=args.positional_embedding_size,
             )
-            labels = dataset.dataset.data.y.tolist()
+            labels = dataset.dataset.graph_labels.data.tolist()
         else:
             dataset = NodeClassificationDatasetLabeled(
                 dataset=args.dataset,
@@ -701,7 +704,14 @@ def main(args):
         del checkpoint
         torch.cuda.empty_cache()
 
+    # tensorboard
+    #  logger = tb_logger.Logger(logdir=args.tb_folder, flush_secs=2)
     sw = SummaryWriter(args.tb_folder)
+    #  plots_q, plots_k = zip(*[train_dataset.getplot(i) for i in range(5)])
+    #  plots_q = torch.cat(plots_q)
+    #  plots_k = torch.cat(plots_k)
+    #  sw.add_images('images/graph_q', plots_q, 0, dataformats="NHWC")
+    #  sw.add_images('images/graph_k', plots_k, 0, dataformats="NHWC")
 
     # routine
     for epoch in range(args.start_epoch, args.epochs + 1):

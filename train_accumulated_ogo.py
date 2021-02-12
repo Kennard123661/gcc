@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
-# File Name: train_graph_moco.py
-# Author: Jiezhong Qiu
-# Create Time: 2019/12/13 16:44
+# Author: Kennard Ng
+# Create Time: 2020/10/29 16:44
 # TODO:
 
 import argparse
@@ -35,6 +34,9 @@ from gcc.datasets import (
 from gcc.datasets.data_util import batcher, labeled_batcher
 from gcc.models import GraphEncoder
 from gcc.utils.misc import AverageMeter, adjust_learning_rate, warmup_linear
+from ogo.ogo_models import OddGraphOutPredictionHead
+from ogo.datasets.graph_dataset import OddGraphOutDataset
+from ogo.datasets.utils import ogo_batcher
 
 
 def parse_option():
@@ -61,6 +63,7 @@ def parse_option():
     parser.add_argument("--weight-decay", type=float, default=1e-5, help="weight decay")
     parser.add_argument("--momentum", type=float, default=0.9, help="momentum")
     parser.add_argument("--clip-norm", type=float, default=1.0, help="clip norm")
+    parser.add_argument("--num-accumulated", type=int, default=8, help='num iterations to accumulate')
 
     # resume
     parser.add_argument("--resume", default="", type=str, metavar="PATH", help="path to latest checkpoint (default: none)")
@@ -71,7 +74,8 @@ def parse_option():
     parser.add_argument("--exp", type=str, default="")
 
     # dataset definition
-    parser.add_argument("--dataset", type=str, default="dgl", choices=["dgl", "wikipedia", "blogcatalog", "usa_airport", "brazil_airport", "europe_airport", "cora", "citeseer", "pubmed", "kdd", "icdm", "sigir", "cikm", "sigmod", "icde", "h-index-rand-1", "h-index-top-1", "h-index"] + GRAPH_CLASSIFICATION_DSETS)
+    parser.add_argument("--dataset", type=str, default="dgl",
+                        choices=["dgl", "wikipedia", "blogcatalog", "usa_airport", "brazil_airport", "europe_airport", "cora", "citeseer", "pubmed", "kdd", "icdm", "sigir", "cikm", "sigmod", "icde", "h-index-rand-1", "h-index-top-1", "h-index"] + GRAPH_CLASSIFICATION_DSETS)
 
     # model definition
     parser.add_argument("--model", type=str, default="gin", choices=["gat", "mpnn", "gin"])
@@ -85,6 +89,8 @@ def parse_option():
     # loss function
     parser.add_argument("--nce-k", type=int, default=32)
     parser.add_argument("--nce-t", type=float, default=0.07)
+    parser.add_argument("--num_graphs", type=int, required=True)
+    parser.add_argument("--fusion_method", type=str, default="cosine-sod")
 
     # random walk
     parser.add_argument("--rw-hops", type=int, default=256)
@@ -131,7 +137,9 @@ def parse_option():
 
 
 def option_update(opt):
-    opt.model_name = "{}_moco_{}_{}_{}_layer_{}_lr_{}_decay_{}_bsz_{}_hid_{}_samples_{}_nce_t_{}_nce_k_{}_rw_hops_{}_restart_prob_{}_aug_{}_ft_{}_deg_{}_pos_{}_momentum_{}".format(
+    opt.model_name = "ogo-accum-{}/{}_ogo{}_{}_{}_layer_{}_lr_{}_decay_{}_bsz_{}_hid_{}_samples_{}_nce_t_{}_nce_k_{}_rw_hops_{}_restart_prob_" \
+                     "{}_aug_{}_ft_{}_deg_{}_pos_{}_momentum_{}_ngraphs_{}".format(
+        opt.num_accumulated,
         opt.exp,
         opt.moco,
         opt.dataset,
@@ -151,6 +159,7 @@ def option_update(opt):
         opt.degree_embedding_size,
         opt.positional_embedding_size,
         opt.alpha,
+        opt.num_graphs
     )
 
     if opt.load_path is None:
@@ -347,88 +356,88 @@ def clip_grad_norm(params, max_norm):
         )
 
 
-def train_moco(
-    epoch, train_loader, model, model_ema, contrast, criterion, optimizer, sw, opt
-):
-    """
-    one epoch training for moco
-    """
-    n_batch = train_loader.dataset.total // opt.batch_size
+def train_ogo(epoch: int, train_loader, model, prediction_head: OddGraphOutPredictionHead, optimizer, sw, opt):
+    """ performs training for one epoch using odd graph out pretraining """
+    num_batches = train_loader.dataset.total // opt.batch_size
     model.train()
-    model_ema.eval()
-
-    def set_bn_train(m):
-        classname = m.__class__.__name__
-        if classname.find("BatchNorm") != -1:
-            m.train()
-
-    model_ema.apply(set_bn_train)
 
     batch_time = AverageMeter()
     data_time = AverageMeter()
     loss_meter = AverageMeter()
     epoch_loss_meter = AverageMeter()
-    prob_meter = AverageMeter()
+    accuracy_meter = AverageMeter()
     graph_size = AverageMeter()
     gnorm_meter = AverageMeter()
     max_num_nodes = 0
     max_num_edges = 0
 
+    criterion = nn.CrossEntropyLoss()
+    num_graphs_per_batch = prediction_head.num_embeddings
     end = time.time()
+    multinomial_weights = torch.ones(num_graphs_per_batch, dtype=torch.float) / num_graphs_per_batch
+    multinomial_weights = multinomial_weights.to(torch.device(opt.gpu))
+    optimizer.zero_grad()
+    num_accum_batches = num_batches // opt.num_accumulated
+
+    num_iters = 0
     for idx, batch in enumerate(train_loader):
         data_time.update(time.time() - end)
-        graph_q, graph_k = batch
+        graphs = batch
+        graphs = graphs.to(torch.device(opt.gpu))
 
-        graph_q.to(torch.device(opt.gpu))
-        graph_k.to(torch.device(opt.gpu))
+        num_total_graphs = graphs.batch_size
+        batchsize = num_total_graphs // num_graphs_per_batch
+        assert batchsize * num_graphs_per_batch == num_total_graphs
 
-        bsz = graph_q.batch_size
+        graph_features = model(graphs)
+        graph_features = graph_features.view(batchsize, num_graphs_per_batch, opt.hidden_size)
 
-        if opt.moco:
-            # ===================Moco forward=====================
-            feat_q = model(graph_q)
-            with torch.no_grad():
-                feat_k = model_ema(graph_k)
+        targets = torch.multinomial(multinomial_weights, num_samples=batchsize, replacement=True)
+        targets = targets.view(-1)
 
-            out = contrast(feat_q, feat_k)
-            prob = out[:, 0].mean()
-        else:
-            # ===================Negative sampling forward=====================
-            feat_q = model(graph_q)
-            feat_k = model(graph_k)
+        # swap the graph with the negative graph; the negative graph can be at the same location.
+        swap_idxs = targets + torch.arange(len(targets), device=torch.device(opt.gpu)) * num_graphs_per_batch
+        flattened_features = graph_features.view(num_total_graphs, opt.hidden_size)
+        swap_features = flattened_features[swap_idxs, :]
+        flattened_features[swap_idxs, :] = graph_features[:, -1, :]  # replace with negative graph
+        graph_features = flattened_features.view(batchsize, num_graphs_per_batch, opt.hidden_size)
+        graph_features[:, -1, :] = swap_features  # replace with swapped graph
 
-            out = torch.matmul(feat_k, feat_q.t()) / opt.nce_t
-            prob = out[range(graph_q.batch_size), range(graph_q.batch_size)].mean()
-
-        assert feat_q.shape == (graph_q.batch_size, opt.hidden_size)
+        # get the predictions
+        logits = prediction_head(graph_features)
+        loss = criterion(logits, targets)
+        loss.backward()
 
         # ===================backward=====================
-        optimizer.zero_grad()
-        loss = criterion(out)
-        loss.backward()
-        grad_norm = clip_grad_norm(model.parameters(), opt.clip_norm)
+        if (idx + 1) % opt.num_accumulated == 0:  # only updates once every num accumulated
+            num_iters += 1
+            grad_norm = clip_grad_norm(model.parameters(), opt.clip_norm)
+            optimizer.step()
+            optimizer.zero_grad()
 
-        global_step = epoch * n_batch + idx
-        lr_this_step = opt.learning_rate * warmup_linear(
-            global_step / (opt.epochs * n_batch), 0.1
-        )
-        for param_group in optimizer.param_groups:
-            param_group["lr"] = lr_this_step
-        optimizer.step()
+            global_step = epoch * num_accum_batches + num_iters
+            lr_this_step = opt.learning_rate * warmup_linear(global_step / (opt.epochs * num_accum_batches), 0.1)
+            for param_group in optimizer.param_groups:
+                param_group["lr"] = lr_this_step
+
+        # ===================prediction accuracy=====================
+        predictions = torch.argmax(logits, dim=1)
+        predictions = predictions.view(-1)
+        is_corrects = torch.eq(predictions, targets)
+        accuracy = torch.mean(is_corrects.float())
 
         # ===================meters=====================
-        loss_meter.update(loss.item(), bsz)
-        epoch_loss_meter.update(loss.item(), bsz)
-        prob_meter.update(prob.item(), bsz)
-        graph_size.update(
-            (graph_q.number_of_nodes() + graph_k.number_of_nodes()) / 2.0 / bsz, 2 * bsz
-        )
-        gnorm_meter.update(grad_norm, 1)
-        max_num_nodes = max(max_num_nodes, graph_q.number_of_nodes())
-        max_num_edges = max(max_num_edges, graph_q.number_of_edges())
+        loss_meter.update(loss.item(), batchsize)
+        epoch_loss_meter.update(loss.item(), batchsize)
+        accuracy_meter.update(accuracy.item(), batchsize)
+        graphs.number_of_nodes()
+        graph_size.update(graphs.number_of_nodes() / num_total_graphs, num_total_graphs)
+        # gnorm_meter.update(grad_norm, 1)
+        max_num_nodes = max(max_num_nodes, graphs.number_of_nodes())
+        max_num_edges = max(max_num_edges, graphs.number_of_edges())
 
-        if opt.moco:
-            moment_update(model, model_ema, opt.alpha)
+        # if opt.moco:
+        #     moment_update(model, model_ema, opt.alpha)
 
         torch.cuda.synchronize()
         batch_time.update(time.time() - end)
@@ -444,34 +453,33 @@ def train_moco(
                 "BT {batch_time.val:.3f} ({batch_time.avg:.3f})\t"
                 "DT {data_time.val:.3f} ({data_time.avg:.3f})\t"
                 "loss {loss.val:.3f} ({loss.avg:.3f})\t"
-                "prob {prob.val:.3f} ({prob.avg:.3f})\t"
+                "accuracy {prob.val:.3f} ({prob.avg:.3f})\t"
                 "GS {graph_size.val:.3f} ({graph_size.avg:.3f})\t"
                 "mem {mem:.3f}".format(
                     epoch,
                     idx + 1,
-                    n_batch,
+                    num_batches,
                     batch_time=batch_time,
                     data_time=data_time,
                     loss=loss_meter,
-                    prob=prob_meter,
+                    prob=accuracy_meter,
                     graph_size=graph_size,
                     mem=mem.used / 1024 ** 3,
                 )
             )
-            #  print(out[0].abs().max())
 
         # tensorboard logger
         if (idx + 1) % opt.tb_freq == 0:
-            global_step = epoch * n_batch + idx
+            global_step = epoch * num_batches + idx
             sw.add_scalar("moco_loss", loss_meter.avg, global_step)
-            sw.add_scalar("moco_prob", prob_meter.avg, global_step)
+            sw.add_scalar("moco_prob", accuracy_meter.avg, global_step)
             sw.add_scalar("graph_size", graph_size.avg, global_step)
             sw.add_scalar("graph_size/max", max_num_nodes, global_step)
             sw.add_scalar("graph_size/max_edges", max_num_edges, global_step)
             sw.add_scalar("gnorm", gnorm_meter.avg, global_step)
             sw.add_scalar("learning_rate", optimizer.param_groups[0]["lr"], global_step)
             loss_meter.reset()
-            prob_meter.reset()
+            accuracy_meter.reset()
             graph_size.reset()
             gnorm_meter.reset()
             max_num_nodes, max_num_edges = 0, 0
@@ -484,6 +492,7 @@ def main(args):
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
+
     checkpoint = None
     if args.resume:
         if os.path.isfile(args.resume):
@@ -523,7 +532,7 @@ def main(args):
                 restart_prob=args.restart_prob,
                 positional_embedding_size=args.positional_embedding_size,
             )
-            labels = dataset.dataset.graph_labels.data.tolist()
+            labels = dataset.dataset.data.y.tolist()
         else:
             dataset = NodeClassificationDatasetLabeled(
                 dataset=args.dataset,
@@ -546,7 +555,8 @@ def main(args):
         valid_dataset = torch.utils.data.Subset(dataset, test_idx)
 
     elif args.dataset == "dgl":
-        train_dataset = LoadBalanceGraphDataset(
+        train_dataset = OddGraphOutDataset(
+            num_graphs=args.num_graphs,
             rw_hops=args.rw_hops,
             restart_prob=args.restart_prob,
             positional_embedding_size=args.positional_embedding_size,
@@ -578,13 +588,14 @@ def main(args):
     train_loader = torch.utils.data.DataLoader(
         dataset=train_dataset,
         batch_size=args.batch_size,
-        collate_fn=labeled_batcher() if args.finetune else batcher(),
+        collate_fn=ogo_batcher(),
         shuffle=True if args.finetune else False,
         num_workers=args.num_workers,
         worker_init_fn=None
         if args.finetune or args.dataset != "dgl"
         else worker_init_fn,
     )
+
     if args.finetune:
         valid_loader = torch.utils.data.DataLoader(
             dataset=valid_dataset,
@@ -599,81 +610,48 @@ def main(args):
     # n_data = train_dataset.total
     n_data = None
 
-    model, model_ema = [
-        GraphEncoder(
-            positional_embedding_size=args.positional_embedding_size,
-            max_node_freq=args.max_node_freq,
-            max_edge_freq=args.max_edge_freq,
-            max_degree=args.max_degree,
-            freq_embedding_size=args.freq_embedding_size,
-            degree_embedding_size=args.degree_embedding_size,
-            output_dim=args.hidden_size,
-            node_hidden_dim=args.hidden_size,
-            edge_hidden_dim=args.hidden_size,
-            num_layers=args.num_layer,
-            num_step_set2set=args.set2set_iter,
-            num_layer_set2set=args.set2set_lstm_layer,
-            norm=args.norm,
-            gnn_model=args.model,
-            degree_input=True,
-        )
-        for _ in range(2)
-    ]
+    model = GraphEncoder(positional_embedding_size=args.positional_embedding_size,
+                         max_node_freq=args.max_node_freq,
+                         max_edge_freq=args.max_edge_freq,
+                         max_degree=args.max_degree,
+                         freq_embedding_size=args.freq_embedding_size,
+                         degree_embedding_size=args.degree_embedding_size,
+                         output_dim=args.hidden_size,
+                         node_hidden_dim=args.hidden_size,
+                         edge_hidden_dim=args.hidden_size,
+                         num_layers=args.num_layer,
+                         num_step_set2set=args.set2set_iter,
+                         num_layer_set2set=args.set2set_lstm_layer,
+                         norm=args.norm,
+                         gnn_model=args.model,
+                         degree_input=True)
 
-    # copy weights from `model' to `model_ema'
-    if args.moco:
-        moment_update(model, model_ema, 0)
-
-    # set the contrast memory and criterion
-    contrast = MemoryMoCo(
-        args.hidden_size, n_data, args.nce_k, args.nce_t, use_softmax=True
-    ).cuda(args.gpu)
-
-    if args.finetune:
-        criterion = nn.CrossEntropyLoss()
-    else:
-        criterion = NCESoftmaxLoss() if args.moco else NCESoftmaxLossNS()
-        criterion = criterion.cuda(args.gpu)
+    # create the prediction head.
+    prediction_head = OddGraphOutPredictionHead(embedding_size=args.hidden_size, num_embeddings=args.num_graphs,
+                                                method=args.fusion_method, batchnorm=True)
 
     model = model.cuda(args.gpu)
-    model_ema = model_ema.cuda(args.gpu)
+    prediction_head = prediction_head.cuda(args.gpu)
 
-    if args.finetune:
-        output_layer = nn.Linear(
-            in_features=args.hidden_size, out_features=dataset.num_classes
-        )
-        output_layer = output_layer.cuda(args.gpu)
-        output_layer_optimizer = torch.optim.Adam(
-            output_layer.parameters(),
-            lr=args.learning_rate,
-            betas=(args.beta1, args.beta2),
-            weight_decay=args.weight_decay,
-        )
-
-        def clear_bn(m):
-            classname = m.__class__.__name__
-            if classname.find("BatchNorm") != -1:
-                m.reset_running_stats()
-
-        model.apply(clear_bn)
-
+    # add optimizer for both prediction head and the graph encoder model
+    params = list(model.parameters()) + list(prediction_head.parameters())
     if args.optimizer == "sgd":
         optimizer = torch.optim.SGD(
-            model.parameters(),
+            params=params,
             lr=args.learning_rate,
             momentum=args.momentum,
             weight_decay=args.weight_decay,
         )
     elif args.optimizer == "adam":
         optimizer = torch.optim.Adam(
-            model.parameters(),
+            params=params,
             lr=args.learning_rate,
             betas=(args.beta1, args.beta2),
             weight_decay=args.weight_decay,
         )
     elif args.optimizer == "adagrad":
         optimizer = torch.optim.Adagrad(
-            model.parameters(),
+            params=params,
             lr=args.learning_rate,
             lr_decay=args.lr_decay_rate,
             weight_decay=args.weight_decay,
@@ -688,28 +666,17 @@ def main(args):
         # checkpoint = torch.load(args.resume, map_location="cpu")
         # checkpoint = torch.load(args.resume)
         # args.start_epoch = checkpoint["epoch"] + 1
+        assert checkpoint is not None and isinstance(checkpoint, dict)
+        print(checkpoint.keys())
         model.load_state_dict(checkpoint["model"])
         # optimizer.load_state_dict(checkpoint["optimizer"])
-        contrast.load_state_dict(checkpoint["contrast"])
-        if args.moco:
-            model_ema.load_state_dict(checkpoint["model_ema"])
+        prediction_head.load_state_dict(checkpoint["prediction-had"])  # there was a typo lol
 
-        print(
-            "=> loaded successfully '{}' (epoch {})".format(
-                args.resume, checkpoint["epoch"]
-            )
-        )
+        print("=> loaded successfully '{}' (epoch {})".format(args.resume, checkpoint["epoch"]))
         del checkpoint
         torch.cuda.empty_cache()
 
-    # tensorboard
-    #  logger = tb_logger.Logger(logdir=args.tb_folder, flush_secs=2)
     sw = SummaryWriter(args.tb_folder)
-    #  plots_q, plots_k = zip(*[train_dataset.getplot(i) for i in range(5)])
-    #  plots_q = torch.cat(plots_q)
-    #  plots_k = torch.cat(plots_k)
-    #  sw.add_images('images/graph_q', plots_q, 0, dataformats="NHWC")
-    #  sw.add_images('images/graph_k', plots_k, 0, dataformats="NHWC")
 
     # routine
     for epoch in range(args.start_epoch, args.epochs + 1):
@@ -718,30 +685,9 @@ def main(args):
         print("==> training...")
 
         time1 = time.time()
-        if args.finetune:
-            loss, _ = train_finetune(
-                epoch,
-                train_loader,
-                model,
-                output_layer,
-                criterion,
-                optimizer,
-                output_layer_optimizer,
-                sw,
-                args,
-            )
-        else:
-            loss = train_moco(
-                epoch,
-                train_loader,
-                model,
-                model_ema,
-                contrast,
-                criterion,
-                optimizer,
-                sw,
-                args,
-            )
+        loss = train_ogo(epoch=epoch, train_loader=train_loader, model=model,
+                         prediction_head=prediction_head, optimizer=optimizer,
+                         sw=sw, opt=args)
         time2 = time.time()
         print("epoch {}, total time {:.2f}".format(epoch, time2 - time1))
 
@@ -751,12 +697,10 @@ def main(args):
             state = {
                 "opt": args,
                 "model": model.state_dict(),
-                "contrast": contrast.state_dict(),
+                "prediction-head": prediction_head.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "epoch": epoch,
             }
-            if args.moco:
-                state["model_ema"] = model_ema.state_dict()
             save_file = os.path.join(
                 args.model_folder, "ckpt_epoch_{epoch}.pth".format(epoch=epoch)
             )
@@ -769,12 +713,10 @@ def main(args):
         state = {
             "opt": args,
             "model": model.state_dict(),
-            "contrast": contrast.state_dict(),
+            "prediction-had": prediction_head.state_dict(),
             "optimizer": optimizer.state_dict(),
             "epoch": epoch,
         }
-        if args.moco:
-            state["model_ema"] = model_ema.state_dict()
         save_file = os.path.join(args.model_folder, "current.pth")
         torch.save(state, save_file)
         if epoch % args.save_freq == 0:
@@ -786,15 +728,8 @@ def main(args):
         del state
         torch.cuda.empty_cache()
 
-    if args.finetune:
-        valid_loss, valid_f1 = test_finetune(
-            epoch, valid_loader, model, output_layer, criterion, sw, args
-        )
-        return valid_f1
-
 
 if __name__ == "__main__":
-
     warnings.simplefilter("once", UserWarning)
     args = parse_option()
 
@@ -817,14 +752,3 @@ if __name__ == "__main__":
     else:
         args.gpu = args.gpu[0]
         main(args)
-    # import optuna
-    # def objective(trial):
-    #     args.epochs = 50
-    #     args.learning_rate = trial.suggest_loguniform('learning_rate', 1e-4, 1e-2)
-    #     args.weight_decay = trial.suggest_loguniform('weight_decay', 1e-5, 1e-3)
-    #     args.restart_prob = trial.suggest_uniform('restart_prob', 0.5, 1)
-    #     # args.alpha = 1 - trial.suggest_loguniform('alpha', 1e-4, 1e-2)
-    #     return main(args, trial)
-
-    # study = optuna.load_study(study_name='cat_prone', storage="sqlite:///example.db")
-    # study.optimize(objective, n_trials=20)

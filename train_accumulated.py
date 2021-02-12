@@ -61,6 +61,7 @@ def parse_option():
     parser.add_argument("--weight-decay", type=float, default=1e-5, help="weight decay")
     parser.add_argument("--momentum", type=float, default=0.9, help="momentum")
     parser.add_argument("--clip-norm", type=float, default=1.0, help="clip norm")
+    parser.add_argument("--num-accumulated", type=int, default=8, help='num iterations to accumulate')
 
     # resume
     parser.add_argument("--resume", default="", type=str, metavar="PATH", help="path to latest checkpoint (default: none)")
@@ -131,7 +132,8 @@ def parse_option():
 
 
 def option_update(opt):
-    opt.model_name = "{}_moco_{}_{}_{}_layer_{}_lr_{}_decay_{}_bsz_{}_hid_{}_samples_{}_nce_t_{}_nce_k_{}_rw_hops_{}_restart_prob_{}_aug_{}_ft_{}_deg_{}_pos_{}_momentum_{}".format(
+    opt.model_name = "gcc-accumulated-{}/{}_moco_{}_{}_{}_layer_{}_lr_{}_decay_{}_bsz_{}_hid_{}_samples_{}_nce_t_{}_nce_k_{}_rw_hops_{}_restart_prob_{}_aug_{}_ft_{}_deg_{}_pos_{}_momentum_{}".format(
+        opt.num_accumulated,
         opt.exp,
         opt.moco,
         opt.dataset,
@@ -373,8 +375,11 @@ def train_moco(
     gnorm_meter = AverageMeter()
     max_num_nodes = 0
     max_num_edges = 0
+    num_accum_batches = n_batch // opt.num_accumulated
 
+    num_iters = 0
     end = time.time()
+    optimizer.zero_grad()
     for idx, batch in enumerate(train_loader):
         data_time.update(time.time() - end)
         graph_q, graph_k = batch
@@ -403,19 +408,19 @@ def train_moco(
         assert feat_q.shape == (graph_q.batch_size, opt.hidden_size)
 
         # ===================backward=====================
-        optimizer.zero_grad()
         loss = criterion(out)
         loss.backward()
-        grad_norm = clip_grad_norm(model.parameters(), opt.clip_norm)
 
-        global_step = epoch * n_batch + idx
-        lr_this_step = opt.learning_rate * warmup_linear(
-            global_step / (opt.epochs * n_batch), 0.1
-        )
-        for param_group in optimizer.param_groups:
-            param_group["lr"] = lr_this_step
-        optimizer.step()
+        if (idx + 1) % opt.num_accumulated == 0:  # only updates once every num accumulated
+            num_iters += 1
+            grad_norm = clip_grad_norm(model.parameters(), opt.clip_norm)
+            optimizer.step()
+            optimizer.zero_grad()
 
+            global_step = epoch * num_accum_batches + num_iters
+            lr_this_step = opt.learning_rate * warmup_linear(global_step / (opt.epochs * num_accum_batches), 0.1)
+            for param_group in optimizer.param_groups:
+                param_group["lr"] = lr_this_step
         # ===================meters=====================
         loss_meter.update(loss.item(), bsz)
         epoch_loss_meter.update(loss.item(), bsz)
@@ -423,7 +428,7 @@ def train_moco(
         graph_size.update(
             (graph_q.number_of_nodes() + graph_k.number_of_nodes()) / 2.0 / bsz, 2 * bsz
         )
-        gnorm_meter.update(grad_norm, 1)
+        # gnorm_meter.update(grad_norm, 1)
         max_num_nodes = max(max_num_nodes, graph_q.number_of_nodes())
         max_num_edges = max(max_num_edges, graph_q.number_of_edges())
 

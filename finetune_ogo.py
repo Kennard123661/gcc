@@ -35,6 +35,8 @@ from gcc.datasets import (
 from gcc.datasets.data_util import batcher, labeled_batcher
 from gcc.models import GraphEncoder
 from gcc.utils.misc import AverageMeter, adjust_learning_rate, warmup_linear
+from ogo.ogo_models import OddGraphOutPredictionHead
+
 
 
 def parse_option():
@@ -108,7 +110,8 @@ def parse_option():
 
     # finetune setting
     parser.add_argument("--finetune", action="store_true")
-
+    parser.add_argument("--num_graphs", type=int, required=True)
+    parser.add_argument("--fusion_method", type=str, default="cosine-sod")
     parser.add_argument("--alpha", type=float, default=0.999, help="exponential moving average weight")
 
     # GPU setting
@@ -131,7 +134,8 @@ def parse_option():
 
 
 def option_update(opt):
-    opt.model_name = "{}_moco_{}_{}_{}_layer_{}_lr_{}_decay_{}_bsz_{}_hid_{}_samples_{}_nce_t_{}_nce_k_{}_rw_hops_{}_restart_prob_{}_aug_{}_ft_{}_deg_{}_pos_{}_momentum_{}".format(
+    opt.model_name = "ogo/{}_ogo{}_{}_{}_layer_{}_lr_{}_decay_{}_bsz_{}_hid_{}_samples_{}_nce_t_{}_nce_k_{}_rw_hops_{}_restart_prob_" \
+                     "{}_aug_{}_ft_{}_deg_{}_pos_{}_momentum_{}_ngraphs_{}".format(
         opt.exp,
         opt.moco,
         opt.dataset,
@@ -151,6 +155,7 @@ def option_update(opt):
         opt.degree_embedding_size,
         opt.positional_embedding_size,
         opt.alpha,
+        opt.num_graphs
     )
 
     if opt.load_path is None:
@@ -484,8 +489,10 @@ def main(args):
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
-    checkpoint = None
+    checkpoint =None
+    assert args.resume
     if args.resume:
+        print(args.resume)
         if os.path.isfile(args.resume):
             print("=> loading checkpoint '{}'".format(args.resume))
             checkpoint = torch.load(args.resume, map_location="cpu")
@@ -507,6 +514,7 @@ def main(args):
             print("=> no checkpoint found at '{}'".format(args.resume))
     args = option_update(args)
     print(args)
+    assert args.finetune
     assert args.gpu is not None and torch.cuda.is_available()
     print("Use GPU: {} for training".format(args.gpu))
     assert args.positional_embedding_size % 2 == 0
@@ -625,10 +633,9 @@ def main(args):
         moment_update(model, model_ema, 0)
 
     # set the contrast memory and criterion
-    contrast = MemoryMoCo(
-        args.hidden_size, n_data, args.nce_k, args.nce_t, use_softmax=True
-    ).cuda(args.gpu)
-
+    # create the prediction head.
+    prediction_head = OddGraphOutPredictionHead(embedding_size=args.hidden_size, num_embeddings=args.num_graphs,
+                                                method=args.fusion_method, batchnorm=True)
     if args.finetune:
         criterion = nn.CrossEntropyLoss()
     else:
@@ -636,8 +643,7 @@ def main(args):
         criterion = criterion.cuda(args.gpu)
 
     model = model.cuda(args.gpu)
-    model_ema = model_ema.cuda(args.gpu)
-
+    # model_ema = model_ema.cuda(args.gpu)
     if args.finetune:
         output_layer = nn.Linear(
             in_features=args.hidden_size, out_features=dataset.num_classes
@@ -683,16 +689,18 @@ def main(args):
 
     # optionally resume from a checkpoint
     args.start_epoch = 1
+    assert args.resume
     if args.resume:
         # print("=> loading checkpoint '{}'".format(args.resume))
         # checkpoint = torch.load(args.resume, map_location="cpu")
         # checkpoint = torch.load(args.resume)
         # args.start_epoch = checkpoint["epoch"] + 1
+        assert checkpoint is not None
         model.load_state_dict(checkpoint["model"])
         # optimizer.load_state_dict(checkpoint["optimizer"])
-        contrast.load_state_dict(checkpoint["contrast"])
-        if args.moco:
-            model_ema.load_state_dict(checkpoint["model_ema"])
+        prediction_head.load_state_dict(checkpoint["prediction-had"])
+        # if args.moco:
+        #     model_ema.load_state_dict(checkpoint["model_ema"])
 
         print(
             "=> loaded successfully '{}' (epoch {})".format(
@@ -731,6 +739,7 @@ def main(args):
                 args,
             )
         else:
+            raise NotImplementedError
             loss = train_moco(
                 epoch,
                 train_loader,
@@ -751,7 +760,7 @@ def main(args):
             state = {
                 "opt": args,
                 "model": model.state_dict(),
-                "contrast": contrast.state_dict(),
+                "prediction-had": prediction_head.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "epoch": epoch,
             }
@@ -769,7 +778,7 @@ def main(args):
         state = {
             "opt": args,
             "model": model.state_dict(),
-            "contrast": contrast.state_dict(),
+            "prediction-had": prediction_head.state_dict(),
             "optimizer": optimizer.state_dict(),
             "epoch": epoch,
         }
